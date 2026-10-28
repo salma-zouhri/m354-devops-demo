@@ -129,11 +129,11 @@ jobs:
           image: m354-web:candidate
           fail-build: true
           severity-cutoff: critical
-          only-fixed: true
+          only-fixed: true # bloque seulement les failles critiques qui ont un correctif disponible
       - name: Test du conteneur réel
         run: |
           docker run -d --name web -p 8080:8080 m354-web:candidate
-          ./scripts/wait-for-version.sh http://localhost:8080 ${{ github.sha }}
+          sh ./scripts/wait-for-version.sh http://localhost:8080 ${{ github.sha }}
       - name: Sauvegarde de l'image pour la release
         if: github.ref == 'refs/heads/main'
         run: docker save m354-web:candidate -o image.tar
@@ -220,7 +220,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: La bonne version est-elle en ligne ?
-        run: ./scripts/wait-for-version.sh "${{ vars.PROD_URL }}" "${{ github.sha }}"
+        run: sh ./scripts/wait-for-version.sh "${{ vars.PROD_URL }}" "${{ github.sha }}"
       - name: Parcours utilisateur en production (Playwright)
         run: |
           npx playwright install --with-deps chromium

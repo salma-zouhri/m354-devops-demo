@@ -46,4 +46,4 @@ jobs:
       - name: Vérification
         env:
           VERSION: ${{ inputs.version }}
-        run: ./scripts/wait-for-version.sh "${{ vars.PROD_URL }}" "\"${VERSION#v}\""
+        run: sh ./scripts/wait-for-version.sh "${{ vars.PROD_URL }}" "\"${VERSION#v}\""
