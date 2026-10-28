@@ -124,7 +124,7 @@ jobs:
       - name: Image Docker (nginx non-root) à partir du même dist/
         run: docker build -t m354-web:candidate .
       - name: Scan de vulnérabilités de l'image (Grype)
-        uses: anchore/scan-action@v6
+        uses: anchore/scan-action@v7
         with:
           image: m354-web:candidate
           fail-build: true
