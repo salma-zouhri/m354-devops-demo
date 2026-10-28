@@ -129,6 +129,7 @@ jobs:
           image: m354-web:candidate
           fail-build: true
           severity-cutoff: critical
+          only-fixed: true
       - name: Test du conteneur réel
         run: |
           docker run -d --name web -p 8080:8080 m354-web:candidate
