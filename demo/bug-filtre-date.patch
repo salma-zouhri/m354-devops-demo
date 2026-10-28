@@ -1,0 +1,13 @@
+diff --git a/src/filter.ts b/src/filter.ts
+index 54172d8..15e0534 100644
+--- a/src/filter.ts
++++ b/src/filter.ts
+@@ -15,7 +15,7 @@ export type Filters = { query: string; date: string | null };
+ export function filterExposes(list: Expose[], { query, date }: Filters): Expose[] {
+   const q = normalize(query);
+   return list.filter((e) => {
+-    const matchesDate = date === null || e.date === date;
++    const matchesDate = date === null || e.date !== date;
+     const matchesQuery = q === "" || normalize(`${e.sujet} ${e.theme}`).includes(q);
+     return matchesDate && matchesQuery;
+   });

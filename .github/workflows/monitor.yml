@@ -1,0 +1,58 @@
+# MONITOR : sonde de disponibilité de la production, toutes les 30 minutes (et à la demande).
+# Mesure le code HTTP, le temps de réponse et la version en ligne, les affiche dans le résumé
+# du run, et ouvre une issue si le site est indisponible ou trop lent (retour à la phase Plan).
+name: Monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    name: Sonde production
+    runs-on: ubuntu-latest
+    env:
+      URL: ${{ vars.PROD_URL }}
+      MAX_SECONDS: "2"
+    steps:
+      - name: Mesures
+        id: probe
+        run: |
+          set +e
+          for path in "" "version.json"; do
+            OUT=$(curl -s -o /tmp/body -w "%{http_code} %{time_total}" "${URL%/}/${path}?t=$(date +%s)")
+            echo "${path:-/} $OUT" >> /tmp/results
+          done
+          VERSION=$(grep -o '"version": *"[^"]*"' /tmp/body | cut -d'"' -f4)
+          {
+            echo "### Sonde production : ${URL}"
+            echo ""
+            echo "| Ressource | Code HTTP | Temps de réponse (s) |"
+            echo "| --- | --- | --- |"
+            while read -r p code t; do echo "| \`$p\` | $code | $t |"; done < /tmp/results
+            echo ""
+            echo "Version en ligne : **${VERSION:-inconnue}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          STATUS=ok
+          while read -r p code t; do
+            if [ "$code" != "200" ] || awk "BEGIN{exit !($t > $MAX_SECONDS)}"; then STATUS=ko; fi
+          done < /tmp/results
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          cat /tmp/results
+
+      - name: Alerte -> issue dans le backlog
+        if: steps.probe.outputs.status == 'ko'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Alerte monitoring : production indisponible ou lente"
+          if [ -z "$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --json number --jq '.[].number')" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
+              --body "La sonde a détecté un problème sur ${URL}. Détails : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
+          exit 1

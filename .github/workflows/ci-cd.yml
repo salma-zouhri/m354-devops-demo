@@ -1,0 +1,243 @@
+# Pipeline CI/CD : chaque changement parcourt la boucle DevOps.
+#
+#   Pull Request : qualité -> tests + sécurité -> build + test e2e + image Docker   = Intégration Continue
+#   main         : ... -> release (GHCR + GitHub Release) -> [approbation] -> déploiement GitHub Pages
+#                  -> smoke test en production                                     = Livraison Continue
+#   (retirer l'approbation de l'environnement github-pages = Déploiement Continu)
+#   Échec sur main : une issue est ouverte automatiquement (retour à la phase Plan)
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  APP_VERSION: 1.0.${{ github.run_number }}
+
+jobs:
+  # ===================== TEST (1/3) : qualité du code, fail fast =====================
+  quality:
+    name: Qualité (lint, types, format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Prettier
+        run: npm run format:check
+
+  # ===================== TEST (2/3) : tests unitaires + couverture =====================
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    needs: quality
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Vitest + couverture (seuil 80 %)
+        run: npm run test:cov
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.node == '22'
+        with:
+          name: coverage
+          path: coverage/
+
+  # ===================== TEST (3/3) : DevSecOps (shift-left) =====================
+  security:
+    name: Sécurité (secrets + dépendances)
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Détection de secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Vulnérabilités des dépendances (npm audit)
+        run: npm audit --audit-level=high --omit=dev
+
+  # ===================== BUILD : un seul artefact, construit une seule fois =====================
+  build:
+    name: Build + e2e + image Docker
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    env:
+      VITE_APP_VERSION: 1.0.${{ github.run_number }}
+      VITE_GIT_SHA: ${{ github.sha }}
+      VITE_ENVIRONMENT: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build Vite (dist/ + version.json)
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+      - name: Tests end-to-end sur le build (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          EXPECTED_SHA=${{ github.sha }} npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+      - name: Image Docker (nginx non-root) à partir du même dist/
+        run: docker build -t m354-web:candidate .
+      - name: Scan de vulnérabilités de l'image (Grype)
+        uses: anchore/scan-action@v6
+        with:
+          image: m354-web:candidate
+          fail-build: true
+          severity-cutoff: critical
+      - name: Test du conteneur réel
+        run: |
+          docker run -d --name web -p 8080:8080 m354-web:candidate
+          ./scripts/wait-for-version.sh http://localhost:8080 ${{ github.sha }}
+      - name: Sauvegarde de l'image pour la release
+        if: github.ref == 'refs/heads/main'
+        run: docker save m354-web:candidate -o image.tar
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: image
+          path: image.tar
+          retention-days: 1
+
+  # ===================== RELEASE : version immuable, publiée =====================
+  release:
+    name: Release (GHCR + GitHub Release)
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # tag + GitHub Release
+      packages: write # image sur GHCR
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push de la MÊME image testée sur GHCR
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker load -i image.tar
+          for TAG in "v${APP_VERSION}" "sha-${GITHUB_SHA::7}" latest; do
+            docker tag m354-web:candidate "${IMAGE}:${TAG}"
+            docker push "${IMAGE}:${TAG}"
+          done
+      - name: GitHub Release (notes générées + dist en pièce jointe)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          (cd dist && zip -qr "../dist-v${APP_VERSION}.zip" .)
+          gh release create "v${APP_VERSION}" "dist-v${APP_VERSION}.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes \
+            --title "v${APP_VERSION}"
+
+  # ===================== DEPLOY : porte d'approbation + GitHub Pages =====================
+  deploy:
+    name: Déploiement production
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages # ajouter des "Required reviewers" à cet environnement = porte humaine
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - name: Déploiement sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ===================== OPERATE : vérifier la production réelle =====================
+  smoke:
+    name: Smoke test production
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: La bonne version est-elle en ligne ?
+        run: ./scripts/wait-for-version.sh "${{ vars.PROD_URL }}" "${{ github.sha }}"
+      - name: Parcours utilisateur en production (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          BASE_URL="${{ vars.PROD_URL }}" EXPECTED_SHA=${{ github.sha }} npm run e2e
+
+  # ===================== MONITOR -> PLAN : l'échec devient une tâche =====================
+  feedback:
+    name: Feedback (issue automatique)
+    needs: [build, release, deploy, smoke]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Ouvrir une issue dans le backlog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Pipeline en échec sur main (${GITHUB_SHA::7})" \
+            --body "Le pipeline a échoué après le commit ${GITHUB_SHA}. Run : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

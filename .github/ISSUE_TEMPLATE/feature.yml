@@ -1,0 +1,23 @@
+name: Nouvelle fonctionnalité
+description: Proposer une user story pour le backlog
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: User story
+      description: En tant que ..., je veux ..., afin de ...
+      placeholder: En tant qu'étudiant, je veux voir la salle de chaque exposé, afin de savoir où aller.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Critères d'acceptation
+      description: Chaque critère deviendra un test automatisé.
+      placeholder: |
+        - [ ] Chaque carte affiche la salle de l'exposé
+        - [ ] Un test automatisé vérifie l'affichage de la salle
+    validations:
+      required: true

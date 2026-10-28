@@ -1,0 +1,120 @@
+diff --git a/src/App.test.tsx b/src/App.test.tsx
+index e6ed853..d1d370e 100644
+--- a/src/App.test.tsx
++++ b/src/App.test.tsx
+@@ -32,6 +32,12 @@ describe("App", () => {
+     expect(screen.getByText("Aucun exposé ne correspond à votre recherche.")).toBeInTheDocument();
+   });
+ 
++  it("affiche la salle de chaque exposé", () => {
++    render(<App />);
++    expect(screen.getAllByText(/^Salle : /)).toHaveLength(8);
++    expect(screen.getAllByText("Salle : Amphi A")).toHaveLength(2);
++  });
++
+   it("affiche la version et le commit déployés", () => {
+     render(<App />);
+     expect(screen.getByTestId("build-info")).toHaveTextContent("commit");
+diff --git a/src/App.tsx b/src/App.tsx
+index 1d169d4..c6d2b9f 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -54,6 +54,7 @@ export default function App() {
+               </div>
+               <h2>{e.sujet}</h2>
+               <p className="date">{formatDate(e.date)}</p>
++              <p className="salle">Salle : {e.salle}</p>
+             </li>
+           ))}
+         </ul>
+diff --git a/src/data.ts b/src/data.ts
+index 8a333ee..53216ca 100644
+--- a/src/data.ts
++++ b/src/data.ts
+@@ -3,20 +3,58 @@ export type Expose = {
+   date: string; // AAAA-MM-JJ
+   sujet: string;
+   theme: "DevOps" | "Sécurité" | "Conteneurs" | "Cloud" | "IoT";
++  salle: string;
+ };
+ 
+ export const EXPOSES: Expose[] = [
+-  { id: 1, date: "2026-11-11", sujet: "Culture DevOps et chaîne CI/CD", theme: "DevOps" },
+-  { id: 2, date: "2026-11-11", sujet: "Sécurité du cloud et responsabilité partagée", theme: "Sécurité" },
+-  { id: 3, date: "2026-11-25", sujet: "Docker : conteneurisation d'une application", theme: "Conteneurs" },
++  { id: 1, date: "2026-11-11", sujet: "Culture DevOps et chaîne CI/CD", theme: "DevOps", salle: "Amphi A" },
++  {
++    id: 2,
++    date: "2026-11-11",
++    sujet: "Sécurité du cloud et responsabilité partagée",
++    theme: "Sécurité",
++    salle: "Amphi A",
++  },
++  {
++    id: 3,
++    date: "2026-11-25",
++    sujet: "Docker : conteneurisation d'une application",
++    theme: "Conteneurs",
++    salle: "Salle 12",
++  },
+   {
+     id: 4,
+     date: "2026-12-02",
+     sujet: "Déploiement d'une application sur une plateforme cloud",
+     theme: "Cloud",
++    salle: "Salle 12",
++  },
++  {
++    id: 5,
++    date: "2026-12-09",
++    sujet: "Application serverless avec des fonctions",
++    theme: "Cloud",
++    salle: "Labo info 2",
++  },
++  {
++    id: 6,
++    date: "2026-12-16",
++    sujet: "Infrastructure as Code avec Terraform",
++    theme: "Cloud",
++    salle: "Labo info 2",
++  },
++  {
++    id: 7,
++    date: "2026-12-23",
++    sujet: "Edge et Fog Computing pour l'Internet des objets",
++    theme: "IoT",
++    salle: "Amphi B",
++  },
++  {
++    id: 8,
++    date: "2026-12-23",
++    sujet: "Orchestration de conteneurs avec Kubernetes",
++    theme: "Conteneurs",
++    salle: "Amphi B",
+   },
+-  { id: 5, date: "2026-12-09", sujet: "Application serverless avec des fonctions", theme: "Cloud" },
+-  { id: 6, date: "2026-12-16", sujet: "Infrastructure as Code avec Terraform", theme: "Cloud" },
+-  { id: 7, date: "2026-12-23", sujet: "Edge et Fog Computing pour l'Internet des objets", theme: "IoT" },
+-  { id: 8, date: "2026-12-23", sujet: "Orchestration de conteneurs avec Kubernetes", theme: "Conteneurs" },
+ ];
+diff --git a/src/styles.css b/src/styles.css
+index 786155c..ccef1ea 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -190,3 +190,16 @@ input[type="search"] {
+   border-radius: 6px;
+   padding: 3px 8px;
+ }
++
++.salle {
++  margin: 6px 0 0;
++  font-size: 14px;
++  font-weight: 600;
++  color: var(--navy);
++}
++
++@media (prefers-color-scheme: dark) {
++  .salle {
++    color: var(--peach);
++  }
++}

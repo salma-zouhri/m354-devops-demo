@@ -1,0 +1,49 @@
+# OPERATE : retour arrière en un clic vers une version déjà publiée.
+# Actions > Rollback > Run workflow > saisir la version (ex. v1.0.12).
+# Aucun rebuild : on redéploie le dist/ attaché à la GitHub Release de cette version.
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à redéployer (ex. v1.0.12)"
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-rollback
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Redéployer ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Télécharger l'artefact de la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern "dist-*.zip"
+          mkdir dist && unzip -q dist-*.zip -d dist
+          cat dist/version.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - name: Redéploiement
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Vérification
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./scripts/wait-for-version.sh "${{ vars.PROD_URL }}" "\"${VERSION#v}\""
