@@ -32,6 +32,12 @@ describe("App", () => {
     expect(screen.getByText("Aucun exposé ne correspond à votre recherche.")).toBeInTheDocument();
   });
 
+  it("affiche la salle de chaque exposé", () => {
+    render(<App />);
+    expect(screen.getAllByText(/^Salle : /)).toHaveLength(8);
+    expect(screen.getAllByText("Salle : Amphi A")).toHaveLength(2);
+  });
+
   it("affiche la version et le commit déployés", () => {
     render(<App />);
     expect(screen.getByTestId("build-info")).toHaveTextContent("commit");

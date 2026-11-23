@@ -190,3 +190,16 @@ input[type="search"] {
   border-radius: 6px;
   padding: 3px 8px;
 }
+
+.salle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+@media (prefers-color-scheme: dark) {
+  .salle {
+    color: var(--peach);
+  }
+}
