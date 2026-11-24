@@ -54,6 +54,7 @@ export default function App() {
               </div>
               <h2>{e.sujet}</h2>
               <p className="date">{formatDate(e.date)}</p>
+              <p className="salle">Salle : {e.salle}</p>
             </li>
           ))}
         </ul>
