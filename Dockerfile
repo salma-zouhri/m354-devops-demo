@@ -7,7 +7,10 @@ FROM nginxinc/nginx-unprivileged:stable-alpine
 
 # Correctifs de sécurité du système (Alpine) au moment du build, puis retour à l'utilisateur non-root
 USER root
-RUN apk upgrade --no-cache
+# Les modules optionnels épinglés par l'image de base empêchent la mise à jour de nginx.
+RUN apk upgrade --no-cache \
+    && apk del --no-cache nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt \
+    && apk add --no-cache --upgrade nginx
 USER 101
 
 LABEL org.opencontainers.image.title="m354-devops-demo" \
